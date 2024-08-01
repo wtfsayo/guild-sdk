@@ -10,20 +10,22 @@ import {
   Stack,
   Text,
   UnorderedList,
+  VStack,
 } from "@chakra-ui/react";
 import { createSigner } from "@guildxyz/sdk";
 import { UserProfile } from "@guildxyz/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
 import { InjectedConnector } from "wagmi/connectors/injected";
 import { WalletConnectConnector } from "wagmi/connectors/walletConnect";
 import guildClient from "../lib/guild";
+import { set } from "zod";
 
 // Id of Our Guild (https://guild.xyz/our-guild)
 // You can check your guild's id with the following endpoint:
 // https://api.guild.xyz/v2/guilds/our-guild
-const GUILD_ID = 1985;
+const GUILD_ID = 14656;
 
 function fetchUserMembershipsInGuild(address: `0x${string}`, guildId: number) {
   return guildClient.user
@@ -63,7 +65,13 @@ export default function Home() {
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
 
-  const [profile, setProfile] = useState<UserProfile>();
+  const [selectedMember, setSelectedMember] = useState();
+
+
+  const [profile, setProfile] = useState();
+  const [myProfile, setMyProfile] = useState<UserProfile>();
+
+  const [members, setMembers] = useState<string[]>();
 
   const { data: userMemberships, isLoading: isUserMembershipsLoading } = useSWR(
     !!address ? ["memberships", address, GUILD_ID] : null,
@@ -77,8 +85,15 @@ export default function Home() {
 
   const { data: leaderboard, isLoading: isLeaderboardLoading } = useSWR(
     ["leaderboard", "walletconnect"],
-    ([, ...params]) => fetchLeaderboard(...params)
+    ([, ...params]) => fetchLeaderboard(GUILD_ID)
   );
+
+
+  useEffect(() => {
+    if (selectedMember) {
+      guildClient.user.getProfile(selectedMember).then(setProfile)
+    }
+  }, [selectedMember])
 
   return (
     <ChakraProvider>
@@ -100,11 +115,36 @@ export default function Home() {
           </HStack>
         )}
 
-        {!!address && (
+
+
+        <Text fontSize={"xx-large"}>Your Roles in Raid Guild</Text>
+
+        <VStack fontSize={"medium"} border={'1px solid black'} padding={10}>
+          {isUserMembershipsLoading || isRolesLoading ? (
+            <Spinner />
+          ) : !userMemberships || !roles ? (
+            <Text>No data</Text>
+          ) : (
+            <UnorderedList>
+              {userMemberships.roleIds.map((roleId) => (
+                <ListItem key={roleId}>
+                  {roles[roleId]} (#{roleId})
+                </ListItem>
+              ))}
+            </UnorderedList>
+          )}
+
+
+
+        </VStack>
+
+        <Text fontSize={'xx-large'}>Fetch your profile</Text>
+        <VStack fontSize={"medium"} border={'1px solid black'} padding={10}>
+          {!!address && (
           <>
-            <Text fontSize={"xx-large"}>Fetch user profile</Text>
+            
             {!profile ? (
-              <Button
+              <Button 
                 onClick={() =>
                   guildClient.user
                     .getProfile(
@@ -114,48 +154,69 @@ export default function Home() {
                         address
                       )
                     )
-                    .then(setProfile)
+                    .then(setMyProfile)
                 }
               >
                 Call Guild API
               </Button>
             ) : (
-              <Text>{JSON.stringify(profile)}</Text>
+              <Text>{JSON.stringify(myProfile)}</Text>
             )}
           </>
-        )}
+            )}
+            
+            </VStack>
 
-        <Text fontSize={"xx-large"}>List Memberships</Text>
+        
+        <Button
+          onClick={() =>
+            guildClient.guild.getMembers(GUILD_ID).then((res) => {
+              setMembers(res[0].members)
+            })
+          }
+        >
+          Fetch Members
+        </Button>
 
-        {isUserMembershipsLoading || isRolesLoading ? (
-          <Spinner />
-        ) : !userMemberships || !roles ? (
-          <Text>No data</Text>
-        ) : (
-          <UnorderedList>
-            {userMemberships.roleIds.map((roleId) => (
-              <ListItem key={roleId}>
-                {roles[roleId]} (#{roleId})
-              </ListItem>
-            ))}
-          </UnorderedList>
-        )}
+        <HStack>
 
-        <Text fontSize={"xx-large"}>Listing Point Leaderboard</Text>
+          <VStack align='flex-start'>
+            <Text fontSize={"xx-large"}>RaidGuild Members</Text>
 
-        {isLeaderboardLoading ? (
-          <Spinner />
-        ) : !leaderboard ? (
-          <Text>No data</Text>
-        ) : (
-          <OrderedList>
-            {leaderboard.leaderboard.map(({ userId, address, totalPoints }) => (
-              <ListItem key={userId}>
-                {address} ({totalPoints} points)
-              </ListItem>
-            ))}
-          </OrderedList>
-        )}
+            <VStack align='flex-start' justify={'flex-start'}>
+              <Text fontSize={"x-large"}>
+                {members ?
+                  `Total: ${members.length}` : 'Not Fetched yet'}
+              </Text>
+              
+              {profile && <Text fontSize={"medium"} border={'1px solid black'} padding={4}>
+                Selected Member
+              </Text>}
+              <Text fontSize={"medium"} border={'1px solid black'} padding={10}>
+                
+                {profile ? JSON.stringify(profile) : 'No member selected'}
+              </Text>
+            </VStack>
+
+
+            {!members ? (
+              <Text>No data fetched</Text>
+            ) : (
+              <UnorderedList>
+                {members.map((member) => (
+                  <ListItem key={member}
+                    cursor={'pointer'}
+                    onClick={() => {
+                      setSelectedMember(member)
+                    }}>
+                    {member}
+                  </ListItem>
+                ))}
+              </UnorderedList>
+            )}
+
+          </VStack>
+        </HStack>
       </Stack>
     </ChakraProvider>
   );
